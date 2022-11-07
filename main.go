@@ -83,6 +83,7 @@ func main() {
 	if !utils.IsDir(filePath) {
 		utils.MkDir(filePath)
 	}
+	utils.PrintfWithTime(pterm.Yellow("文件服务器将在首次资源更新完成后启动"))
 	updateRes()
 	ticker := time.NewTicker(UPDATETIME)
 	go func() {
@@ -96,5 +97,6 @@ func main() {
 		utils.PrintfWithTime(pterm.Sprintf("%s %s %s %s", pterm.Green("接受访问:"), pterm.Yellow(ip), pterm.Cyan("->"), r.URL.Path))
 		http.StripPrefix("/res/", http.FileServer(http.Dir(filePath))).ServeHTTP(w, r)
 	})
+	utils.PrintfWithTime(pterm.Green("更新完毕，将启动文件服务器"))
 	http.ListenAndServe(PORT, nil)
 }
