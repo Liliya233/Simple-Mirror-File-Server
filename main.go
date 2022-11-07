@@ -19,19 +19,22 @@ var UPDATETIME = 1 * time.Hour
 
 var isUpdating = false
 
-func download(fileName string) []byte {
+func download(fileName string) ([]byte, error) {
+	var compressedData []byte
 	var execBytes []byte
 	var err error
 	path := path.Join(utils.GetCurrentDir(), LOCAL_REPO, fileName)
 	url := REMOTE_REPO + fileName
-	compressedData := utils.DownloadSmallContent(url)
+	if compressedData, err = utils.DownloadSmallContent(url); err != nil {
+		return nil, err
+	}
 	if execBytes, err = io.ReadAll(bytes.NewReader(compressedData)); err != nil {
-		panic(err)
+		return nil, err
 	}
 	if err := utils.WriteFileData(path, execBytes); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return compressedData
+	return compressedData, nil
 }
 
 func updateRes() {
@@ -41,7 +44,12 @@ func updateRes() {
 		return
 	}
 	isUpdating = true
-	jsonData := download("hashes.json")
+	jsonData, err := download("hashes.json")
+	if err != nil {
+		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("无法从远程仓库获取hashes，将在 %s 后再次尝试更新", UPDATETIME)))
+		isUpdating = false
+		return
+	}
 	hashMap := make(map[string]string, 0)
 	if err := json.Unmarshal([]byte(jsonData), &hashMap); err != nil {
 		panic(err)
@@ -51,15 +59,18 @@ func updateRes() {
 	for k, v := range hashMap {
 		if v != utils.GetFileHash(path.Join(utils.GetCurrentDir(), LOCAL_REPO, k)) {
 			p.UpdateTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), k))
-			download(k)
+			if _, err := download(k); err != nil {
+				utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Red("更新失败 ->"), k))
+				p.Increment()
+				continue
+			}
 			utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Green("更新完成 ->"), k))
-			p.Increment()
 		} else {
 			utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("无需更新 ->"), k))
-			p.Increment()
 		}
+		p.Increment()
 	}
-	utils.PrintfWithTime(pterm.Green(pterm.Sprintf("资源更新完成！将在 %s 后再次检查更新", UPDATETIME)))
+	utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新执行完毕，将在 %s 后再次检查更新", UPDATETIME)))
 	isUpdating = false
 }
 

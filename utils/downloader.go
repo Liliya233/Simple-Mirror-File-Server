@@ -6,19 +6,18 @@ import (
 	"net/http"
 )
 
-func DownloadSmallContent(sourceUrl string) []byte {
+func DownloadSmallContent(sourceUrl string) ([]byte, error) {
 	// Get the data
 	resp, err := http.Get(sourceUrl)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// Buffer
 	contents := bytes.NewBuffer([]byte{})
-	if _, err := io.Copy(contents, resp.Body); err == nil {
-		return contents.Bytes()
-	} else {
-		panic(err)
-	}
+	_, err = io.Copy(contents, resp.Body)
+
+	// Return bytes or err
+	return contents.Bytes(), err
 }
