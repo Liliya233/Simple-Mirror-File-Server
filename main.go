@@ -52,7 +52,9 @@ func updateRes() {
 	}
 	hashMap := make(map[string]string, 0)
 	if err := json.Unmarshal([]byte(jsonData), &hashMap); err != nil {
-		panic(err)
+		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("解析hashes出现错误，可能远程仓库暂时不可用，将在 %s 后再次尝试更新", UPDATETIME)))
+		isUpdating = false
+		return
 	}
 	p, _ := pterm.DefaultProgressbar.WithTotal(len(hashMap)).WithTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), pterm.White("FileName"))).Start()
 	p.RemoveWhenDone = true
