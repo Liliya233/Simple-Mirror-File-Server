@@ -15,7 +15,7 @@ import (
 var REMOTE_REPO = "https://storage.fastbuilder.pro/"
 var LOCAL_REPO = "./files"
 var PORT = ":12333"
-var UPDATETIME = 1 * time.Hour
+var UPDATETIME = 24 * time.Hour
 
 var isUpdating = false
 
