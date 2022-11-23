@@ -59,11 +59,13 @@ func updateRes() bool {
 	}
 	p, _ := pterm.DefaultProgressbar.WithTotal(len(hashMap)).WithTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), pterm.White("FileName"))).Start()
 	p.RemoveWhenDone = true
+	var result = true
 	for k, v := range hashMap {
 		if v != utils.GetFileHash(path.Join(utils.GetCurrentDir(), LOCAL_REPO, k)) {
 			p.UpdateTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), k))
 			if _, err := download(k); err != nil {
 				utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Red("更新失败 ->"), k))
+				result = false
 				p.Increment()
 				continue
 			}
@@ -73,7 +75,7 @@ func updateRes() bool {
 		}
 		p.Increment()
 	}
-	return true
+	return result
 }
 
 func main() {
