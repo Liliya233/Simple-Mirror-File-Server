@@ -38,7 +38,7 @@ func download(fileName string) ([]byte, error) {
 	return compressedData, nil
 }
 
-func updateRes() bool {
+func updateRes() {
 	STORAGE_REPO = REMOTE_REPO
 	utils.PrintfWithTime(pterm.Yellow("尝试进行资源更新.."))
 	jsonData, err := download("hashes.json")
@@ -46,26 +46,27 @@ func updateRes() bool {
 		if STORAGE_REPO == REMOTE_REPO {
 			utils.PrintfWithTime(pterm.Red("无法从远程仓库获取hashes，将切换至镜像仓库并再次尝试更新"))
 			STORAGE_REPO = MIRROR_REPO
+			updateRes()
 		} else {
 			utils.PrintfWithTime(pterm.Red(pterm.Sprintf("无法从远程仓库获取hashes，将在 %s 后再次尝试更新", UPDATETIME)))
 			STORAGE_REPO = REMOTE_REPO
 		}
-		return false
+		return
 	}
 	hashMap := make(map[string]string, 0)
 	if err := json.Unmarshal([]byte(jsonData), &hashMap); err != nil {
 		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("解析hashes出现错误，可能远程仓库暂时不可用，将在 %s 后再次尝试更新", UPDATETIME)))
-		return false
+		return
 	}
 	p, _ := pterm.DefaultProgressbar.WithTotal(len(hashMap)).WithTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), pterm.White("FileName"))).Start()
 	p.RemoveWhenDone = true
-	var result = true
+	success := true
 	for k, v := range hashMap {
 		if v != utils.GetFileHash(path.Join(utils.GetCurrentDir(), LOCAL_REPO, k)) {
 			p.UpdateTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), k))
 			if _, err := download(k); err != nil {
 				utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Red("更新失败 ->"), k))
-				result = false
+				success = false
 				p.Increment()
 				continue
 			}
@@ -75,7 +76,12 @@ func updateRes() bool {
 		}
 		p.Increment()
 	}
-	return result
+	if !success {
+		utils.PrintfWithTime(pterm.Yellow("资源更新未完全成功，将再次尝试更新"))
+		updateRes()
+	} else {
+		utils.PrintfWithTime(pterm.Green(pterm.Sprintf("资源更新成功，将在 %s 后再次检查更新", UPDATETIME)))
+	}
 }
 
 func main() {
@@ -87,14 +93,8 @@ func main() {
 		utils.MkDir(filePath)
 	}
 	utils.PrintfWithTime(pterm.Yellow("文件服务器将在首次资源更新完成后启动"))
-	var ticker *time.Ticker
-	if updateRes() {
-		utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新执行完毕，将在 %s 后再次检查更新", UPDATETIME)))
-		ticker = time.NewTicker(UPDATETIME)
-	} else {
-		utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新未完全成功，将在 %s 后再次尝试更新", 10*time.Second)))
-		ticker = time.NewTicker(10 * time.Second)
-	}
+	updateRes()
+	ticker := time.NewTicker(UPDATETIME)
 	go func() {
 		for {
 			<-ticker.C
@@ -106,6 +106,6 @@ func main() {
 		utils.PrintfWithTime(pterm.Sprintf("%s %s %s %s", pterm.Green("接受访问:"), pterm.Yellow(ip), pterm.Cyan("->"), r.URL.Path))
 		http.StripPrefix("/res/", http.FileServer(http.Dir(filePath))).ServeHTTP(w, r)
 	})
-	utils.PrintfWithTime(pterm.Green("启动文件服务器"))
+	utils.PrintfWithTime(pterm.Green("文件服务器已启动"))
 	http.ListenAndServe(PORT, nil)
 }
