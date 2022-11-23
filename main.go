@@ -12,21 +12,20 @@ import (
 	"github.com/pterm/pterm"
 )
 
+var STORAGE_REPO = ""
 var REMOTE_REPO = "https://github.com/LNSSPsd/PhoenixBuilder/releases/latest/download/"
+var MIRROR_REPO = "https://hub.fgit.ml/LNSSPsd/PhoenixBuilder/releases/latest/download/"
 
-// var MIRROR_REPO = "https://hub.fgit.ml/LNSSPsd/PhoenixBuilder/releases/latest/download/"
 var LOCAL_REPO = "./files"
 var PORT = ":12333"
 var UPDATETIME = 24 * time.Hour
-
-var isUpdating = false
 
 func download(fileName string) ([]byte, error) {
 	var compressedData []byte
 	var execBytes []byte
 	var err error
 	path := path.Join(utils.GetCurrentDir(), LOCAL_REPO, fileName)
-	url := REMOTE_REPO + fileName
+	url := STORAGE_REPO + fileName
 	if compressedData, err = utils.DownloadSmallContent(url); err != nil {
 		return nil, err
 	}
@@ -39,24 +38,24 @@ func download(fileName string) ([]byte, error) {
 	return compressedData, nil
 }
 
-func updateRes() {
+func updateRes() bool {
+	STORAGE_REPO = REMOTE_REPO
 	utils.PrintfWithTime(pterm.Yellow("尝试进行资源更新.."))
-	if isUpdating {
-		utils.PrintfWithTime(pterm.Yellow("仍有资源处于下载状态，终止本次更新"))
-		return
-	}
-	isUpdating = true
 	jsonData, err := download("hashes.json")
 	if err != nil {
-		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("无法从远程仓库获取hashes，将在 %s 后再次尝试更新", UPDATETIME)))
-		isUpdating = false
-		return
+		if STORAGE_REPO == REMOTE_REPO {
+			utils.PrintfWithTime(pterm.Red("无法从远程仓库获取hashes，将切换至镜像仓库并再次尝试更新"))
+			STORAGE_REPO = MIRROR_REPO
+		} else {
+			utils.PrintfWithTime(pterm.Red(pterm.Sprintf("无法从远程仓库获取hashes，将在 %s 后再次尝试更新", UPDATETIME)))
+			STORAGE_REPO = REMOTE_REPO
+		}
+		return false
 	}
 	hashMap := make(map[string]string, 0)
 	if err := json.Unmarshal([]byte(jsonData), &hashMap); err != nil {
 		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("解析hashes出现错误，可能远程仓库暂时不可用，将在 %s 后再次尝试更新", UPDATETIME)))
-		isUpdating = false
-		return
+		return false
 	}
 	p, _ := pterm.DefaultProgressbar.WithTotal(len(hashMap)).WithTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), pterm.White("FileName"))).Start()
 	p.RemoveWhenDone = true
@@ -74,22 +73,26 @@ func updateRes() {
 		}
 		p.Increment()
 	}
-	utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新执行完毕，将在 %s 后再次检查更新", UPDATETIME)))
-	isUpdating = false
+	return true
 }
 
 func main() {
 	pterm.DefaultBox.Println("https://github.com/Liliya233/simple_mirror_file_site")
 	filePath := path.Join(utils.GetCurrentDir(), LOCAL_REPO)
-	utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("将使用此地址作为远程仓库:"), REMOTE_REPO))
 	utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("将使用此目录搭建文件服务器:"), filePath))
 	utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("将使用此IP搭建文件服务器:"), PORT))
 	if !utils.IsDir(filePath) {
 		utils.MkDir(filePath)
 	}
 	utils.PrintfWithTime(pterm.Yellow("文件服务器将在首次资源更新完成后启动"))
-	updateRes()
-	ticker := time.NewTicker(UPDATETIME)
+	var ticker *time.Ticker
+	if updateRes() {
+		utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新执行完毕，将在 %s 后再次检查更新", UPDATETIME)))
+		ticker = time.NewTicker(UPDATETIME)
+	} else {
+		utils.PrintfWithTime(pterm.Yellow(pterm.Sprintf("资源更新未完全成功，将在 %s 后再次尝试更新", 10*time.Second)))
+		ticker = time.NewTicker(10 * time.Second)
+	}
 	go func() {
 		for {
 			<-ticker.C
@@ -101,6 +104,6 @@ func main() {
 		utils.PrintfWithTime(pterm.Sprintf("%s %s %s %s", pterm.Green("接受访问:"), pterm.Yellow(ip), pterm.Cyan("->"), r.URL.Path))
 		http.StripPrefix("/res/", http.FileServer(http.Dir(filePath))).ServeHTTP(w, r)
 	})
-	utils.PrintfWithTime(pterm.Green("更新完毕，将启动文件服务器"))
+	utils.PrintfWithTime(pterm.Green("启动文件服务器"))
 	http.ListenAndServe(PORT, nil)
 }
