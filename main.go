@@ -12,7 +12,9 @@ import (
 	"github.com/pterm/pterm"
 )
 
-var REMOTE_REPO = "https://storage.fastbuilder.pro/"
+var REMOTE_REPO = "https://github.com/LNSSPsd/PhoenixBuilder/releases/latest/download/"
+
+// var MIRROR_REPO = "https://hub.fgit.ml/LNSSPsd/PhoenixBuilder/releases/latest/download/"
 var LOCAL_REPO = "./files"
 var PORT = ":12333"
 var UPDATETIME = 24 * time.Hour
