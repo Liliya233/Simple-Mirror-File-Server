@@ -12,9 +12,9 @@ import (
 	"github.com/pterm/pterm"
 )
 
-var STORAGE_REPO = ""
 var REMOTE_REPO = "https://github.com/LNSSPsd/PhoenixBuilder/releases/latest/download/"
 var MIRROR_REPO = "https://hub.fgit.ml/LNSSPsd/PhoenixBuilder/releases/latest/download/"
+var STORAGE_REPO = REMOTE_REPO
 
 var LOCAL_REPO = "./files"
 var PORT = ":12333"
@@ -39,7 +39,6 @@ func download(fileName string) ([]byte, error) {
 }
 
 func updateRes() {
-	STORAGE_REPO = REMOTE_REPO
 	utils.PrintfWithTime(pterm.Yellow("尝试进行资源更新.."))
 	jsonData, err := download("hashes.json")
 	if err != nil {
