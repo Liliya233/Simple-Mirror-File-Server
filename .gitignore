@@ -1,2 +1,6 @@
-.vscode
-files
+# 文件夹
+/.vscode
+/build
+
+# 文件名
+config.json

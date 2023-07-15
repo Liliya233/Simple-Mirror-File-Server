@@ -2,24 +2,22 @@ package utils
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"encoding/hex"
+	"io"
+	"os"
 )
 
-func GetBinaryHash(fileData []byte) string {
-	cvt := func(in [32]byte) []byte {
-		return in[:32]
-	}
-	hashedBytes := cvt(sha256.Sum256(fileData))
-	return fmt.Sprintf("%x", hashedBytes)
-}
-
+// 获取文件Hash
 func GetFileHash(fname string) string {
-	if IsFile(fname) {
-		fileData, err := GetFileData(fname)
-		if err != nil {
-			panic(err)
-		}
-		return GetBinaryHash(fileData)
+	file, err := os.Open(fname)
+	if err != nil {
+		return ""
 	}
-	return ""
+	defer file.Close()
+	hash := sha256.New()
+	if _, err = io.Copy(hash, file); err != nil {
+		return ""
+	}
+	hashValue := hash.Sum(nil)
+	return hex.EncodeToString(hashValue)
 }

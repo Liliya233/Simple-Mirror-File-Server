@@ -1,0 +1,19 @@
+{
+    "本地文件夹": "res",
+    "IP地址": "0.0.0.0",
+    "开放端口": 12333,
+    "Github镜像站": "https://www.omega-download.top/",
+    "检查更新频率(秒)": 86400,
+    "资源列表": [
+        {
+            "子文件夹名称": "omega_launcher",
+            "资源地址": "https://github.com/Liliya233/omega_launcher/releases/latest/download/",
+            "Hash文件名称": "hashes.json"
+        },
+        {
+            "子文件夹名称": "PhoenixBuilder",
+            "资源地址": "https://github.com/LNSSPsd/PhoenixBuilder/releases/latest/download/",
+            "Hash文件名称": "hashes.json"
+        }
+    ]
+}

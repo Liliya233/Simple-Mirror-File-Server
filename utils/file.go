@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 )
@@ -13,7 +14,7 @@ func IsDir(path string) bool {
 
 func MkDir(path string) bool {
 	if !IsDir(path) {
-		err := os.Mkdir(path, 0755)
+		err := os.MkdirAll(path, 0755)
 		if err != nil {
 			return false
 		}
@@ -73,7 +74,7 @@ func GetJsonData(fname string, ptr interface{}) error {
 		return err
 	}
 	if len(data) == 0 || data == nil {
-		return nil
+		return errors.New("Empty file")
 	}
 	err = json.Unmarshal(data, ptr)
 	if err != nil {

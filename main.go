@@ -1,110 +1,142 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fileserver/utils"
-	"io"
+	"fmt"
 	"net/http"
-	"path"
+	"path/filepath"
+	"strings"
 	"time"
+
+	_ "embed"
 
 	"github.com/pterm/pterm"
 )
 
-var REMOTE_REPO = "https://github.com/LNSSPsd/PhoenixBuilder/releases/latest/download/"
-var MIRROR_REPO = "https://hub.fgit.ml/LNSSPsd/PhoenixBuilder/releases/latest/download/"
-var STORAGE_REPO = REMOTE_REPO
+var (
+	//go:embed assets/default_config.json
+	defaultConfig []byte
+	CurrentConfig *Config = &Config{}
+)
 
-var LOCAL_REPO = "./files"
-var PORT = ":12333"
-var UPDATETIME = 24 * time.Hour
-
-func download(fileName string) ([]byte, error) {
-	var compressedData []byte
-	var execBytes []byte
-	var err error
-	path := path.Join(utils.GetCurrentDir(), LOCAL_REPO, fileName)
-	url := STORAGE_REPO + fileName
-	if compressedData, err = utils.DownloadSmallContent(url); err != nil {
-		return nil, err
-	}
-	if execBytes, err = io.ReadAll(bytes.NewReader(compressedData)); err != nil {
-		return nil, err
-	}
-	if err := utils.WriteFileData(path, execBytes); err != nil {
-		return nil, err
-	}
-	return compressedData, nil
+// 配置文件结构
+type Config struct {
+	LocalDir   string    `json:"本地文件夹"`
+	Address    string    `json:"IP地址"`
+	Port       uint32    `json:"开放端口"`
+	MirrorUrl  string    `json:"Github镜像站"`
+	CheckCycle int64     `json:"检查更新频率(秒)"`
+	SourceList []*Source `json:"资源列表"`
 }
 
-func updateRes() {
-	utils.PrintfWithTime(pterm.Yellow("尝试进行资源更新.."))
-	jsonData, err := download("hashes.json")
+// 资源项
+type Source struct {
+	SubDirName   string `json:"子文件夹名称"`
+	Url          string `json:"资源地址"`
+	HashFileName string `json:"Hash文件名称"`
+}
+
+func download(DownloadUrl, dstFile string) (err error) {
+	var downloadBytes []byte
+	if downloadBytes, err = utils.DownloadSmallContent(DownloadUrl); err != nil {
+		return err
+	}
+	if err := utils.WriteFileData(dstFile, downloadBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func updateRes(source *Source) {
+	utils.PrintWarn("检查更新: " + source.SubDirName)
+	// 如有设置镜像站, 检查是否为Github链接
+	if CurrentConfig.MirrorUrl != "" && !strings.HasPrefix(source.Url, "https://github.com/") {
+		utils.PrintError("非 Github 链接无法使用镜像站: " + source.SubDirName)
+		return
+	}
+	// 设置下载url
+	downloadUrl := CurrentConfig.MirrorUrl + source.Url
+	// 获取 hash 及文件列表
+	hashesBytes, err := utils.DownloadSmallContent(downloadUrl + source.HashFileName)
 	if err != nil {
-		if STORAGE_REPO == REMOTE_REPO {
-			utils.PrintfWithTime(pterm.Red("无法从远程仓库获取hashes，将切换至镜像仓库并再次尝试更新"))
-			STORAGE_REPO = MIRROR_REPO
-			updateRes()
-		} else {
-			utils.PrintfWithTime(pterm.Red(pterm.Sprintf("无法从远程仓库获取hashes，将在 %s 后再次尝试更新", UPDATETIME)))
-			STORAGE_REPO = REMOTE_REPO
-		}
+		utils.PrintError("下载hash文件时出现错误: " + err.Error())
 		return
 	}
+	// 解析 hash 及文件列表
 	hashMap := make(map[string]string, 0)
-	if err := json.Unmarshal([]byte(jsonData), &hashMap); err != nil {
-		utils.PrintfWithTime(pterm.Red(pterm.Sprintf("解析hashes出现错误，可能远程仓库暂时不可用，将在 %s 后再次尝试更新", UPDATETIME)))
+	if err := json.Unmarshal([]byte(hashesBytes), &hashMap); err != nil {
+		utils.PrintError("解析hash文件时出现错误, 可能指定的文件不正确: " + err.Error())
 		return
 	}
+	// 设置文件夹
+	downloadDir := filepath.Join(utils.GetCurrentDir(), CurrentConfig.LocalDir, source.SubDirName)
+	// 初始化文件夹
+	utils.MkDir(downloadDir)
+	// 将hash文件保存到文件夹
+	utils.WriteFileData(filepath.Join(downloadDir, source.HashFileName), hashesBytes)
+	// 开始更新
 	p, _ := pterm.DefaultProgressbar.WithTotal(len(hashMap)).WithTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), pterm.White("FileName"))).Start()
 	p.RemoveWhenDone = true
 	success := true
-	for k, v := range hashMap {
-		if v != utils.GetFileHash(path.Join(utils.GetCurrentDir(), LOCAL_REPO, k)) {
-			p.UpdateTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), k))
-			if _, err := download(k); err != nil {
-				utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Red("更新失败 ->"), k))
+	// 遍历文件列表
+	for fileName, fileHash := range hashMap {
+		// hash不一致时进行更新
+		if fileHash != utils.GetFileHash(filepath.Join(downloadDir, fileName)) {
+			// 打印开始更新信息
+			p.UpdateTitle(pterm.Sprintf("%s %s %s", pterm.White(time.Now().Format("[15:04:05]")), pterm.Yellow("正在更新 ->"), fileName))
+			// 尝试更新
+			if err := download(downloadUrl+fileName, filepath.Join(downloadDir, fileName)); err != nil {
+				utils.PrintError("更新失败 -> " + fileName)
 				success = false
-				p.Increment()
-				continue
+			} else {
+				utils.PrintSuccess("更新完成 -> " + fileName)
 			}
-			utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.Green("更新完成 ->"), k))
 		} else {
-			utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("无需更新 ->"), k))
+			utils.PrintInfo("无需更新 -> " + fileName)
 		}
 		p.Increment()
 	}
-	if !success {
-		utils.PrintfWithTime(pterm.Yellow("资源更新未完全成功，将再次尝试更新"))
-		updateRes()
+	if success {
+		utils.PrintSuccess("全部资源更新完成: " + source.SubDirName)
 	} else {
-		utils.PrintfWithTime(pterm.Green(pterm.Sprintf("资源更新成功，将在 %s 后再次检查更新", UPDATETIME)))
+		// 失败时继续更新
+		utils.PrintWarn("存在未成功更新的资源, 将再次尝试更新: " + source.SubDirName)
+		updateRes(source)
 	}
 }
 
 func main() {
+	// 打印项目地址
 	pterm.DefaultBox.Println("https://github.com/Liliya233/simple_mirror_file_site")
-	filePath := path.Join(utils.GetCurrentDir(), LOCAL_REPO)
-	utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("将使用此目录搭建文件服务器:"), filePath))
-	utils.PrintfWithTime(pterm.Sprintf("%s %s", pterm.LightCyan("将使用此IP搭建文件服务器:"), PORT))
-	if !utils.IsDir(filePath) {
-		utils.MkDir(filePath)
+	// 读取配置
+	configPath := filepath.Join(utils.GetCurrentDir(), "config.json")
+	if utils.GetJsonData(configPath, CurrentConfig) != nil {
+		// 读取失败, 使用默认配置
+		utils.PrintWarn("未能读取到配置文件, 将生成并使用默认配置")
+		utils.WriteFileData(configPath, defaultConfig)
+		utils.GetJsonData(configPath, CurrentConfig)
 	}
-	utils.PrintfWithTime(pterm.Yellow("文件服务器将在首次资源更新完成后启动"))
-	updateRes()
-	ticker := time.NewTicker(UPDATETIME)
+	// 打印运行信息
+	utils.PrintInfo("将基于此目录搭建文件服务器: " + CurrentConfig.LocalDir)
+	utils.PrintInfo("将使用此IP搭建文件服务器: " + fmt.Sprintf("%s:%d", CurrentConfig.Address, CurrentConfig.Port))
+	// 初始化文件夹
+	utils.MkDir(CurrentConfig.LocalDir)
+	// 启动文件更新协程
+	ticker := time.NewTicker(time.Duration(CurrentConfig.CheckCycle) * time.Second)
 	go func() {
 		for {
+			for _, source := range CurrentConfig.SourceList {
+				updateRes(source)
+			}
 			<-ticker.C
-			updateRes()
 		}
 	}()
-	http.HandleFunc("/res/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(fmt.Sprintf("/%s/", CurrentConfig.LocalDir), func(w http.ResponseWriter, r *http.Request) {
 		ip, _ := utils.GetIP(r)
-		utils.PrintfWithTime(pterm.Sprintf("%s %s %s %s", pterm.Green("接受访问:"), pterm.Yellow(ip), pterm.Cyan("->"), r.URL.Path))
-		http.StripPrefix("/res/", http.FileServer(http.Dir(filePath))).ServeHTTP(w, r)
+		utils.PrintInfo("接受访问: " + ip + "->" + r.URL.Path)
+		http.StripPrefix(fmt.Sprintf("/%s/", CurrentConfig.LocalDir), http.FileServer(http.Dir(filepath.Join(utils.GetCurrentDir(), CurrentConfig.LocalDir)))).ServeHTTP(w, r)
 	})
-	utils.PrintfWithTime(pterm.Green("文件服务器已启动"))
-	http.ListenAndServe(PORT, nil)
+	utils.PrintSuccess("文件服务器已启动")
+	http.ListenAndServe(fmt.Sprintf("%s:%d", CurrentConfig.Address, CurrentConfig.Port), nil)
 }
